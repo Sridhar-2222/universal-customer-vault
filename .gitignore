@@ -43,3 +43,7 @@ yarn-error.*
 # Real secrets never go in git
 .env
 .env.production
+
+# OCR benchmark output
+ocr-service/bench/out*/
+__pycache__/
