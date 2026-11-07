@@ -1,4 +1,4 @@
-// Reports built from public.account_totals() and public.gst_summary() (pure; tested in reports.test.ts).
+// Reports built from customer_vault.account_totals() and customer_vault.gst_summary() (pure; tested in reports.test.ts).
 export type Total = { code: string; name: string; type: string; debit_paise: number; credit_paise: number };
 export type Row = { code: string; name: string; amount: number };
 export type GstRow = { kind: string; invoices: number; taxable_paise: number; cgst_paise: number; sgst_paise: number; igst_paise: number; total_paise: number };

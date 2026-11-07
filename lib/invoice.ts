@@ -1,4 +1,4 @@
-// Invoice form logic (pure; tested in invoice.test.ts). Mirrors public.invoice_issues() in
+// Invoice form logic (pure; tested in invoice.test.ts). Mirrors customer_vault.invoice_issues() in
 // 0003_business_accounting.sql so the person sees problems instantly; the database checks again before posting.
 import { gstinValid } from "./accounting";
 
@@ -79,7 +79,7 @@ export const issueText: Record<Issue, string> = {
   bad_amount: "Check quantities, rates and the total.",
 };
 
-/** The JSON that public.save_invoice() takes. */
+/** The JSON that customer_vault.save_invoice() takes. */
 export function toPayload(d: InvoiceDraft, ocr?: Record<string, unknown>) {
   return {
     kind: d.kind, number: d.number.trim(), date: d.date, due_date: d.dueDate || null,

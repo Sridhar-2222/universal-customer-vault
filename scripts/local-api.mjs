@@ -13,18 +13,21 @@ pg.types.setTypeParser(1082, (v) => v);
 pg.types.setTypeParser(20, (v) => Number(v));
 pg.types.setTypeParser(1700, (v) => Number(v));
 const pool = new pg.Pool({ connectionString: PGURL });
+// supabase-js names the schema in Accept-Profile (reads) / Content-Profile (calls), like PostgREST.
+const SCHEMAS = ["customer_vault", "public"];
+const schemaOf = (req) => { const s = req.headers["accept-profile"] ?? req.headers["content-profile"] ?? "public"; return SCHEMAS.includes(s) ? s : null; };
 const q = (id) => `"${String(id).replace(/"/g, '""')}"`;
 
 const fkCache = new Map();
-async function relation(db, from, to) {
-  const key = `${from}>${to}`;
+async function relation(db, S, from, to) {
+  const key = `${S}.${from}>${to}`;
   if (fkCache.has(key)) return fkCache.get(key);
   const sql = `select c.conrelid = $1::regclass as from_is_child,
       array(select a.attname::text from unnest(c.conkey) with ordinality k(n, o) join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.n order by k.o) as child_cols,
       array(select a.attname::text from unnest(c.confkey) with ordinality k(n, o) join pg_attribute a on a.attrelid = c.confrelid and a.attnum = k.n order by k.o) as parent_cols
     from pg_constraint c where c.contype = 'f' and ((c.conrelid = $1::regclass and c.confrelid = $2::regclass) or (c.conrelid = $2::regclass and c.confrelid = $1::regclass))
     order by array_length(c.conkey, 1) desc`;
-  const { rows } = await db.query(sql, [`public.${from}`, `public.${to}`]);
+  const { rows } = await db.query(sql, [`${S}.${from}`, `${S}.${to}`]);
   const r = rows[0];
   const out = !r ? null : r.from_is_child
     ? { many: false, mine: r.child_cols, theirs: r.parent_cols }
@@ -43,7 +46,7 @@ function splitTop(s) {
   if (cur) out.push(cur);
   return out.map((x) => x.trim()).filter(Boolean);
 }
-async function shape(db, table, rows, sel) {
+async function shape(db, S, table, rows, sel) {
   const parts = splitTop(sel || "*");
   for (const row of rows) {
     const out = {};
@@ -51,12 +54,12 @@ async function shape(db, table, rows, sel) {
       const m = p.match(/^([a-z_]+)\((.*)\)$/s);
       if (!m) { if (p === "*") Object.assign(out, row); else out[p] = row[p]; continue; }
       const [, rel, inner] = m;
-      const fk = await relation(db, table, rel);
+      const fk = await relation(db, S, table, rel);
       if (!fk) throw Object.assign(new Error(`no relation ${table}->${rel}`), { code: "PGRST200" });
       const vals = fk.mine.map((c) => row[c]);
       const where = fk.theirs.map((c, i) => `${q(c)} = $${i + 1}`).join(" and ");
-      const got = vals.some((v) => v == null) ? [] : (await db.query(`select * from public.${q(rel)} where ${where}`, vals)).rows;
-      const shaped = await shape(db, rel, got, inner);
+      const got = vals.some((v) => v == null) ? [] : (await db.query(`select * from ${S}.${q(rel)} where ${where}`, vals)).rows;
+      const shaped = await shape(db, S, rel, got, inner);
       out[rel] = fk.many ? shaped : shaped[0] ?? null;
     }
     for (const k of Object.keys(row)) delete row[k];
@@ -65,7 +68,7 @@ async function shape(db, table, rows, sel) {
   return rows;
 }
 const OPS = { eq: "=", neq: "<>", gt: ">", gte: ">=", lt: "<", lte: "<=" };
-async function select(db, table, params, wantCount) {
+async function select(db, S, table, params, wantCount) {
   const vals = [], conds = [];
   for (const [k, v] of params) {
     if (["select", "order", "limit", "offset"].includes(k)) continue;
@@ -80,18 +83,18 @@ async function select(db, table, params, wantCount) {
   const order = ord ? ` order by ${ord.split(",").map((o) => { const [c, dir, nulls] = o.split("."); return `${q(c)} ${dir === "desc" ? "desc" : "asc"}${nulls === "nullslast" ? " nulls last" : nulls === "nullsfirst" ? " nulls first" : ""}`; }).join(", ")}` : "";
   const limit = params.get("limit") ? ` limit ${Number(params.get("limit"))}` : "";
   const offset = params.get("offset") ? ` offset ${Number(params.get("offset"))}` : "";
-  const count = wantCount ? Number((await db.query(`select count(*) from public.${q(table)}${where}`, vals)).rows[0].count) : null;
-  const rows = (await db.query(`select * from public.${q(table)}${where}${order}${limit}${offset}`, vals)).rows;
-  return { rows: await shape(db, table, rows, params.get("select")), count };
+  const count = wantCount ? Number((await db.query(`select count(*) from ${S}.${q(table)}${where}`, vals)).rows[0].count) : null;
+  const rows = (await db.query(`select * from ${S}.${q(table)}${where}${order}${limit}${offset}`, vals)).rows;
+  return { rows: await shape(db, S, table, rows, params.get("select")), count };
 }
-async function rpc(db, fn, args) {
+async function rpc(db, S, fn, args) {
   const { rows: fns } = await db.query(`select p.proretset, p.proargnames, t.typname, t.typtype from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    join pg_type t on t.oid = p.prorettype where n.nspname = 'public' and p.proname = $1`, [fn]);
+    join pg_type t on t.oid = p.prorettype where n.nspname = $2 and p.proname = $1`, [fn, S]);
   const keys = Object.keys(args);
   const f = fns.find((x) => keys.every((k) => (x.proargnames ?? []).includes(k)));
-  if (!f) throw Object.assign(new Error(`Could not find the function public.${fn}`), { code: "PGRST202" });
+  if (!f) throw Object.assign(new Error(`Could not find the function ${S}.${fn}`), { code: "PGRST202" });
   const vals = keys.map((k) => (args[k] !== null && typeof args[k] === "object" ? JSON.stringify(args[k]) : args[k]));
-  const call = `public.${q(fn)}(${keys.map((k, i) => `${q(k)} => $${i + 1}`).join(", ")})`;
+  const call = `${S}.${q(fn)}(${keys.map((k, i) => `${q(k)} => $${i + 1}`).join(", ")})`;
   if (f.proretset || f.typtype === "c") return (await db.query(`select * from ${call}`, vals)).rows;
   const r = (await db.query(`select ${call} as v`, vals)).rows[0].v;
   return f.typname === "void" ? null : r;
@@ -173,6 +176,8 @@ http.createServer(async (req, res) => {
   if (url.pathname.startsWith("/storage/v1/")) return storage(req, res, url, user).catch((e) => send(res, 500, { message: e.message }));
   const m = url.pathname.match(/^\/rest\/v1\/(rpc\/)?([a-z_]+)$/);
   if (!m) return send(res, 404, { message: "not implemented in local-api" });
+  const S = schemaOf(req);
+  if (!S) return send(res, 406, { code: "PGRST106", message: "schema not exposed" });
   let body = "";
   for await (const c of req) body += c;
   const db = await pool.connect();
@@ -182,10 +187,10 @@ http.createServer(async (req, res) => {
     await db.query("select set_config('request.jwt.claim.sub', $1, true)", [user?.sub ?? ""]);
     let out;
     const headers = {};
-    if (m[1]) out = await rpc(db, m[2], body ? JSON.parse(body) : {});
+    if (m[1]) out = await rpc(db, S, m[2], body ? JSON.parse(body) : {});
     else if (req.method === "GET" || req.method === "HEAD") {
       const wantCount = /count=exact/.test(req.headers.prefer ?? "");
-      const r = await select(db, m[2], url.searchParams, wantCount);
+      const r = await select(db, S, m[2], url.searchParams, wantCount);
       out = r.rows;
       if (wantCount) headers["content-range"] = `${r.rows.length ? `0-${r.rows.length - 1}` : "*"}/${r.count}`;
       if (/vnd\.pgrst\.object/.test(req.headers.accept ?? "")) {

@@ -1,13 +1,14 @@
-# Universal Customer Vault
+# Vault (Fingertip)
 
-A private document vault and accounting app for **Android and Web**: individuals and families keep bills,
-warranties, bookings and records in one place; businesses can send documents to customers who agree; one
-accounting engine serves personal and business books. Core features are free to use (no subscriptions, per-user or
-per-invoice charges); hosting, storage and messaging providers may still cost money.
+A private document vault and accounting part for **Android and Web**, shared by **Fingertrip.biz AI** and
+**Rx Fingertip**: individuals and families keep bills, warranties, bookings and records in one place; businesses can
+send documents to customers who agree, read bills from photos, and keep GST books. Core features are free to use (no
+subscriptions, per-user or per-invoice charges); hosting, storage and messaging providers may still cost money.
 
-> Status (7 Nov 2026): **starter, regenerated and verified** — installs, type-checks, builds for web, and its
-> database rules pass 42 access tests. Not yet connected to a live Supabase project, not yet tested on an Android
-> phone, and Strong OCR is not built yet. See [docs/ROADMAP.md](docs/ROADMAP.md) for exactly what is done.
+> Status (7 Nov 2026): accounting, bill-photo reading (OCR) and review screens built and tested locally (87 database
+> checks, 42 logic tests, a 16-step browser run). Its database goes into the Fingertip Supabase project in its own
+> schema `customer_vault`; **not applied to the live project yet**. Not tested on an Android phone. See
+> [docs/ROADMAP.md](docs/ROADMAP.md) for exactly what is done.
 
 ## What is inside
 

@@ -30,7 +30,7 @@ export default function SignIn() {
   return (
     <Screen>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12, maxWidth: 480, width: "100%", alignSelf: "center" }}>
-        <H1>Universal Customer Vault</H1>
+        <H1>Vault</H1>
         <P muted>Your bills, warranties and records in one private place.</P>
         <Card>
           {!sent ? (
