@@ -8,15 +8,13 @@ Order agreed in the handover. ✅ done and verified · 🟡 partly done · ⬜ n
 | 2 | Make the project installable and buildable | ✅ | `npm install`, type check and `expo export --platform web` pass; web page opens (setup screen). Android build not yet run (needs EAS, stage 8). |
 | 3 | Connect Supabase and configure authentication | ⬜ | Needs a Supabase project (owner decision: new free project). Email one-time-code sign-in is written. |
 | 4 | Test vault ownership and sharing permissions | 🟡 | 23 database checks pass on a local test database (ownership, consent before sending, business sees only what it sent, share/revoke, unrelated parties see nothing, activity history). To repeat on the live project. |
-| 5 | Complete the accounting engine | 🟡 | Engine and rules done (19 database checks: balance enforced at posting, posted entries locked, reversal, AI drafts only, personal/business separation, GST sale). Still to build: sales/purchase registers, party ledgers, receivables/payables and overdue alerts, cashbook/bankbook views, GST summary, P&L and balance sheet screens, natural-language questions. |
-| 6 | Implement strong OCR | ⬜ | **Required, not optional.** Plan: PaddleOCR primary (server), Tesseract fallback, document-intelligence layer for layout/tables/GST fields, confidence scores and human review. Validation helpers already exist (`checkInvoice`, `gstinValid`). |
-| 7 | Accounting review and approval workflows | 🟡 | Database side done (suggest → accept as draft → person posts). Review screen for OCR-extracted invoices still to build. |
+| 5 | Complete the accounting engine | ✅ | Sales/purchase invoices with GST checks, approval, payments, sales and purchase registers, party ledgers, receivables/payables with overdue, cash and bank books, GST summary, P&L, balance sheet, plain-language questions. Tested: database checks (`npm run test:db`), logic tests (`npm test`) and a browser run of every screen against a local test server (`scripts/ui-smoke.cjs`). Not yet on a live Supabase project (stage 3). |
+| 6 | Implement strong OCR | 🟡 | `ocr-service/`: PaddleOCR PP-OCR models first, Tesseract fallback, PDF text, rotation/tilt/lighting fixes, blur/dark/handwriting warnings; `lib/ocr-extract.ts` reads GST invoice fields with a confidence per field. Tested on 27 synthetic damaged bills: amounts, taxes, totals, GSTIN, dates 100%; 89% fully correct (blurred photos lose spaces between words). **Real photos not tested yet; handwriting is only flagged, not read.** Service not deployed yet. |
+| 7 | Accounting review and approval workflows | ✅ | "Read a bill photo": the photo is kept in the business's private folder (`b/<business>/`, members only, cannot be deleted), read by OCR, shown above the fields read for checking, saved for review, and posted only by an owner/admin after ticking "I checked these details against the paper bill". Tested: 12 database checks for the bill folder (84 in all) and a browser run with a damaged phone photo (every field right, posting locked until the box is ticked, photo still shown after posting). Android not tested (stage 8). |
 | 8 | Test Android and web | ⬜ | Web build opens; nothing tested on a phone yet. |
 | 9 | Deployment instructions | 🟡 | Browser-only outline in README; to be tested end to end. |
 | 10 | Finished source and a simple download route | 🟡 | Source is in this private GitHub repository (Code → Download ZIP works in any browser). |
 
 ## Not built yet (do not claim)
 
-Strong OCR; scanned/multi-page PDFs; handwriting; natural-language accounting questions; GST reports; backups and
-recovery procedure; reminders/notifications; separate health store; business screens (sending documents, business
-books).
+Reading handwriting (only flagged); OCR on real photos (only synthetic bills tested); backups and recovery procedure; reminders/notifications; separate health store; a business screen for sending documents into customers' vaults (the database side exists).

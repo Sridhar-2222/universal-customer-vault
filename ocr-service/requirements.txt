@@ -2,8 +2,9 @@ fastapi==0.115.*
 uvicorn[standard]==0.32.*
 python-multipart==0.0.*
 httpx==0.28.*
-rapidocr-onnxruntime==1.4.*
+rapidocr-onnxruntime==1.4.4
 opencv-python-headless==4.10.*
+opencv-python==4.10.*  # rapidocr needs opencv-python; without this pin it pulls OpenCV 5, which clashes with the headless 4.10
 pillow==11.*
 numpy==2.*
 pymupdf==1.25.*

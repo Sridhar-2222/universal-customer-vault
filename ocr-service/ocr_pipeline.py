@@ -53,9 +53,7 @@ def _paddle_engine():
         else:
             from rapidocr_onnxruntime import RapidOCR  # type: ignore
 
-            plain = RapidOCR()
-            plain.use_angle_cls = False  # second copy without the per-line flip, used only to find the page's rotation
-            _paddle = ("pp-ocr", (RapidOCR(), plain))
+            _paddle = ("pp-ocr", RapidOCR())
     return _paddle
 
 
@@ -68,7 +66,9 @@ def read_paddle(img: np.ndarray, use_cls: bool = True) -> list[Line]:
                 xs, ys = [p[0] for p in poly], [p[1] for p in poly]
                 out.append(Line(txt, float(sc), (min(xs), min(ys), max(xs), max(ys))))
         return out
-    res, _ = (eng[0] if use_cls else eng[1])(img)
+    # use_cls=False turns off PP-OCR's per-line 180° flip; the page-rotation trials need it off, or an upside-down
+    # page reads as if it were upright. (Passed per call: the engine attribute's name differs between versions.)
+    res, _ = eng(img, use_cls=use_cls)
     for box, txt, sc in res or []:
         xs, ys = [p[0] for p in box], [p[1] for p in box]
         out.append(Line(txt, float(sc), (min(xs), min(ys), max(xs), max(ys))))

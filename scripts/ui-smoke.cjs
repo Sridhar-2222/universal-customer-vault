@@ -1,8 +1,10 @@
 const http = require("http"), fs = require("fs"), path = require("path");
 const { chromium } = require("playwright");
 // LOCAL TESTING ONLY. Clicks through the business accounting screens against scripts/local-api.mjs.
-// Usage: node scripts/ui-smoke.cjs <web export folder built with EXPO_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321> <screenshot folder>
-const DIST = process.argv[2], SHOTS = process.argv[3];
+// Usage: node scripts/ui-smoke.cjs <web export folder built with EXPO_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321> <screenshot folder> [bill folder]
+// The optional bill folder holds bill.jpg and truth.json (known answers); it also needs the OCR service on
+// EXPO_PUBLIC_OCR_URL (OCR_DEV_NO_AUTH=1, see ocr-service/README.md). Then the photo-reading steps run too.
+const DIST = process.argv[2], SHOTS = process.argv[3], BILL = process.argv[4];
 const srv = http.createServer((req, res) => {
   let p = path.join(DIST, decodeURIComponent(new URL(req.url, "http://x").pathname));
   if (!p.startsWith(DIST) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) p = path.join(DIST, "index.html");
@@ -87,7 +89,58 @@ const session = { access_token: tok, token_type: "bearer", expires_in: 86400 * 3
       await page.getByRole("button", { name: "Bank book" }).click();
       await page.getByText(/balance ₹500\.00/).waitFor({ timeout: 10000 });
     });
+    if (BILL) await billSteps(page, step, shot);
   } catch {}
   console.log("page errors:", errors.length ? errors.slice(0, 5) : "none");
   await browser.close(); srv.close();
 })();
+
+// Read a damaged phone photo of a purchase bill, check every field against the known answers, then approve it.
+async function billSteps(page, step, shot) {
+  const { truth } = JSON.parse(fs.readFileSync(path.join(BILL, "truth.json"), "utf8"));
+  const rs = (p) => (p / 100).toFixed(2).replace(/\.00$/, "");
+  const field = (label) => page.getByLabel(new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`)).last();
+  await step("open the bill photo screen", async () => {
+    await page.goto("http://127.0.0.1:8099/accounting");
+    await page.getByText("Sai Electricals").first().click();
+    await page.getByRole("button", { name: "Read a bill photo" }).click();
+    await page.getByRole("button", { name: "Choose a photo or PDF" }).waitFor({ timeout: 10000 });
+  });
+  await step("choose the photo", async () => {
+    const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.getByRole("button", { name: "Choose a photo or PDF" }).click()]);
+    await chooser.setFiles(path.join(BILL, "bill.jpg"));
+    await page.getByLabel("Chosen bill photo").waitFor({ timeout: 10000 });
+  });
+  await step("read it with OCR", async () => {
+    await page.getByRole("button", { name: "Read this bill" }).click();
+    await page.getByText("Read from a photo — please check").waitFor({ timeout: 120000 });
+  });
+  await step("every field matches the paper", async () => {
+    const want = { "Supplier name": truth.party, "GSTIN": truth.gstin, "Invoice number": truth.number, "Date": truth.date,
+      "CGST ₹": rs(truth.cgst), "SGST ₹": rs(truth.sgst), "Grand total ₹": rs(truth.total) };
+    truth.items.forEach((it, i) => { want[`Item ${i + 1}`] = it.description; });
+    const wrong = [];
+    for (const [label, v] of Object.entries(want)) { const got = await field(label).inputValue(); if (got !== String(v)) wrong.push(`${label}: got "${got}", want "${v}"`); }
+    if (await page.getByLabel(`Item ${truth.items.length + 1}`).count()) wrong.push("an extra item row was read");
+    if (wrong.length) throw new Error(wrong.join("; "));
+    await page.getByText("All checks pass.").waitFor({ timeout: 3000 });
+  });
+  await step("the stored photo is shown above the fields", async () => {
+    await page.waitForFunction(() => [...document.querySelectorAll('[aria-label="Bill photo"] img, img[aria-label="Bill photo"]')].some((i) => i.naturalWidth > 0)
+      || [...document.querySelectorAll('[aria-label="Bill photo"]')].some((d) => /url\(/.test(getComputedStyle(d.querySelector("div") ?? d).backgroundImage)), null, { timeout: 15000 });
+  });
+  await shot("5-bill-review");
+  await step("save for review; posting is locked until the paper check is ticked", async () => {
+    await page.getByRole("button", { name: "Save for review" }).click();
+    await page.getByText(/Saved for review/).waitFor({ timeout: 10000 });
+    if (!(await page.getByRole("button", { name: "Post to books" }).isDisabled())) throw new Error("Post was allowed before the paper check");
+    await page.getByRole("checkbox").click();
+    await page.getByRole("button", { name: "Post to books" }).click();
+    await page.getByText("Posted to the books.").waitFor({ timeout: 10000 });
+  });
+  await step("the photo stays with the posted bill", async () => {
+    await page.reload();
+    await page.getByText(/Purchase bill · posted/).first().waitFor({ timeout: 15000 });
+    await page.getByLabel("Bill photo").waitFor({ timeout: 15000 });
+  });
+}

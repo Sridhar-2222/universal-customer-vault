@@ -101,8 +101,68 @@ const userOf = (req) => {
   const tok = (req.headers.authorization ?? "").replace(/^Bearer /, "");
   try { const p = JSON.parse(Buffer.from(tok.split(".")[1] ?? "", "base64url").toString()); return p.sub && p.role === "authenticated" ? p : null; } catch { return null; }
 };
-const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,HEAD,OPTIONS", "access-control-expose-headers": "content-range" };
+const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,HEAD,DELETE,OPTIONS", "access-control-expose-headers": "content-range" };
 const send = (res, status, body, extra = {}) => { res.writeHead(status, { "content-type": "application/json", ...cors, ...extra }); res.end(body === undefined ? "" : JSON.stringify(body)); };
+
+// Runs fn inside one transaction as the signed-in user (role + auth.uid()), with RLS on, like the real API.
+async function asUser(user, fn) {
+  const db = await pool.connect();
+  try {
+    await db.query("begin");
+    await db.query(`set local role ${user ? "authenticated" : "anon"}`);
+    await db.query("select set_config('request.jwt.claim.sub', $1, true)", [user?.sub ?? ""]);
+    const out = await fn(db);
+    await db.query("commit");
+    return out;
+  } catch (e) { await db.query("rollback").catch(() => {}); throw e; } finally { db.release(); }
+}
+
+// Storage: file bytes kept in memory; who may upload, read or delete is decided by the storage.objects policies.
+const files = new Map(); // "bucket/name" -> { mime, bytes }
+const tokens = new Map(); // signing token -> { key, until }
+const storageErr = (res, status, error, message) => send(res, status, { statusCode: String(status), error, message });
+async function storage(req, res, url, user) {
+  const read = async () => { const parts = []; for await (const c of req) parts.push(c); return Buffer.concat(parts); };
+  let m = url.pathname.match(/^\/storage\/v1\/object\/sign\/([a-z0-9_-]+)\/(.+)$/);
+  if (m && req.method === "GET") { // open a signed link (no sign-in needed, like the real service)
+    const t = tokens.get(url.searchParams.get("token") ?? "");
+    const key = `${m[1]}/${decodeURIComponent(m[2])}`;
+    if (!t || t.key !== key || t.until < Date.now() || !files.has(key)) return storageErr(res, 400, "InvalidSignature", "invalid or expired link");
+    const f = files.get(key);
+    res.writeHead(200, { "content-type": f.mime, ...cors }); return res.end(f.bytes);
+  }
+  if (m && req.method === "POST") { // create a signed link: only if this user may read the object
+    const [bucket, name] = [m[1], decodeURIComponent(m[2])];
+    const { expiresIn } = JSON.parse((await read()).toString() || "{}");
+    const seen = await asUser(user, async (db) => (await db.query("select 1 from storage.objects where bucket_id = $1 and name = $2", [bucket, name])).rowCount);
+    if (!seen) return storageErr(res, 400, "not_found", "Object not found");
+    const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    tokens.set(token, { key: `${bucket}/${name}`, until: Date.now() + Number(expiresIn ?? 60) * 1000 });
+    // The plain path, as the real service returns it; supabase-js applies encodeURI itself.
+    return send(res, 200, { signedURL: `/object/sign/${bucket}/${name}?token=${token}` });
+  }
+  m = url.pathname.match(/^\/storage\/v1\/object\/([a-z0-9_-]+)\/(.+)$/);
+  if (m && (req.method === "POST" || req.method === "PUT")) { // upload
+    const [bucket, name] = [m[1], decodeURIComponent(m[2])];
+    const bytes = await read(), mime = req.headers["content-type"] ?? "application/octet-stream";
+    if (/^multipart\//.test(mime)) return storageErr(res, 415, "unsupported", "local-api accepts raw bytes only (the app uploads an ArrayBuffer)");
+    if (!user) return storageErr(res, 403, "Unauthorized", "sign in");
+    try {
+      await asUser(user, (db) => db.query("insert into storage.objects(bucket_id, name, owner, metadata) values ($1, $2, $3, $4)",
+        [bucket, name, user.sub, JSON.stringify({ mimetype: mime, size: bytes.length })]));
+    } catch (e) { return storageErr(res, 403, "Unauthorized", `new row violates row-level security policy: ${e.message}`); }
+    files.set(`${bucket}/${name}`, { mime, bytes });
+    return send(res, 200, { Id: name, Key: `${bucket}/${name}` });
+  }
+  m = url.pathname.match(/^\/storage\/v1\/object\/([a-z0-9_-]+)$/);
+  if (m && req.method === "DELETE") { // remove: only what the delete policy allows
+    const { prefixes } = JSON.parse((await read()).toString() || "{}");
+    const gone = await asUser(user, async (db) => (await db.query("delete from storage.objects where bucket_id = $1 and name = any($2) returning name", [m[1], prefixes ?? []])).rows);
+    for (const g of gone) files.delete(`${m[1]}/${g.name}`);
+    return send(res, 200, gone.map((g) => ({ name: g.name })));
+  }
+  return send(res, 404, { message: "not implemented in local-api" });
+}
 
 http.createServer(async (req, res) => {
   if (req.method === "OPTIONS") return send(res, 204);
@@ -110,6 +170,7 @@ http.createServer(async (req, res) => {
   const user = userOf(req);
   if (url.pathname === "/auth/v1/user") return user ? send(res, 200, { id: user.sub, email: user.email, aud: "authenticated", role: "authenticated", app_metadata: {}, user_metadata: {} }) : send(res, 401, { message: "no user" });
   if (url.pathname.startsWith("/auth/v1/logout")) return send(res, 204);
+  if (url.pathname.startsWith("/storage/v1/")) return storage(req, res, url, user).catch((e) => send(res, 500, { message: e.message }));
   const m = url.pathname.match(/^\/rest\/v1\/(rpc\/)?([a-z_]+)$/);
   if (!m) return send(res, 404, { message: "not implemented in local-api" });
   let body = "";
