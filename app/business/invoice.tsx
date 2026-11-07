@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Image, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { Button, Card, Chips, colors, Field, H2, P, Screen } from "@/components/ui";
 import { formatINR } from "@/lib/accounting";
 import { plainError } from "@/lib/books";
 import { emptyInvoice, GST_RATES, invoiceIssues, issueText, roundOff, suggestTaxes, taxableTotal, toPayload, type InvoiceDraft, type InvoiceKind, type ItemDraft } from "@/lib/invoice";
 import { iso } from "@/lib/periods";
-import { supabase } from "@/lib/supabase";
+import { dropScan, getScan } from "@/lib/scan-handoff";
+import { BUCKET, supabase } from "@/lib/supabase";
 import { useBusiness } from "@/lib/use-business";
 
 type Saved = { id: string; status: string; source: string; total_paise: number; issues: string[]; ocr: { confidence?: Record<string, number>; engine?: string; warnings?: string[] } | null };
+type BillFile = { path: string; mime: string | null };
 type Payment = { id: string; paid_on: string; amount_paise: number; mode: string; reference: string | null };
 
 // Money typed as text; empty means 0. Returns NaN for anything that is not an amount.
@@ -18,9 +20,12 @@ const rupees = (p: number) => (p ? (p / 100).toFixed(2).replace(/\.00$/, "") : "
 
 // One screen for typing an invoice, reviewing one read from a photo, approving (posting) it, and payments.
 export default function InvoiceScreen() {
-  const params = useLocalSearchParams<{ book: string; biz: string; kind?: string; id?: string }>();
+  const params = useLocalSearchParams<{ book: string; biz: string; kind?: string; id?: string; scan?: string }>();
   const { info, canApprove } = useBusiness(params.biz);
-  const [d, setD] = useState<InvoiceDraft>(() => emptyInvoice((params.kind as InvoiceKind) ?? "sale", iso(new Date())));
+  // A bill just read from a photo (scan.tsx): not saved yet; saving stores it for review with the photo linked.
+  const [scan] = useState(() => getScan(params.scan));
+  const [file, setFile] = useState<BillFile | null>(() => (scan ? { path: scan.filePath, mime: scan.mime } : null));
+  const [d, setD] = useState<InvoiceDraft>(() => scan?.draft ?? emptyInvoice((params.kind as InvoiceKind) ?? "sale", iso(new Date())));
   const [text, setText] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<Saved | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -30,12 +35,13 @@ export default function InvoiceScreen() {
 
   const load = useCallback(async (id: string) => {
     const { data } = await supabase.from("invoices")
-      .select("id,kind,number,invoice_date,due_date,cgst_paise,sgst_paise,igst_paise,total_paise,status,source,issues,ocr,parties(name,gstin,phone),invoice_items(line_no,description,hsn,qty,unit,rate_paise,discount_paise,gst_rate)")
+      .select("id,kind,number,invoice_date,due_date,cgst_paise,sgst_paise,igst_paise,total_paise,status,source,issues,ocr,parties(name,gstin,phone),business_files(file_path,mime),invoice_items(line_no,description,hsn,qty,unit,rate_paise,discount_paise,gst_rate)")
       .eq("id", id).maybeSingle();
     if (!data) return;
     const r = data as unknown as {
       id: string; kind: InvoiceKind; number: string; invoice_date: string; due_date: string | null; cgst_paise: number; sgst_paise: number; igst_paise: number; total_paise: number;
       status: string; source: string; issues: string[]; ocr: Saved["ocr"]; parties: { name: string; gstin: string | null; phone: string | null } | null;
+      business_files: { file_path: string; mime: string | null } | null;
       invoice_items: { line_no: number; description: string; hsn: string | null; qty: number; unit: string | null; rate_paise: number; discount_paise: number; gst_rate: number | null }[];
     };
     const items = [...r.invoice_items].sort((a, b) => a.line_no - b.line_no).map((i) => ({ description: i.description, hsn: i.hsn ?? "", qty: Number(i.qty), unit: i.unit ?? "",
@@ -43,6 +49,7 @@ export default function InvoiceScreen() {
     const draft: InvoiceDraft = { kind: r.kind, number: r.number, date: r.invoice_date, dueDate: r.due_date, party: { name: r.parties?.name ?? "", gstin: r.parties?.gstin ?? "", phone: r.parties?.phone ?? "" },
       items, cgstPaise: Number(r.cgst_paise), sgstPaise: Number(r.sgst_paise), igstPaise: Number(r.igst_paise), totalPaise: Number(r.total_paise) };
     setD(draft); setText(textFrom(draft));
+    if (r.business_files) setFile({ path: r.business_files.file_path, mime: r.business_files.mime });
     setSaved({ id: r.id, status: r.status, source: r.source, total_paise: Number(r.total_paise), issues: r.issues, ocr: r.ocr });
     const p = await supabase.from("payments").select("id,paid_on,amount_paise,mode,reference").eq("invoice_id", id).order("paid_on");
     setPayments((p.data ?? []) as Payment[]);
@@ -52,7 +59,9 @@ export default function InvoiceScreen() {
   const locked = saved?.status === "posted" || saved?.status === "cancelled";
   const issues = useMemo(() => invoiceIssues(d, info?.gstin), [d, info?.gstin]);
   const badMoney = Object.entries(text).some(([k, v]) => /rate|disc|cgst|sgst|igst|total/.test(k) && Number.isNaN(money(v)));
-  const conf = saved?.ocr?.confidence ?? {};
+  const fromPhoto = saved ? saved.source === "ocr" : !!scan;
+  const ocrInfo = saved?.ocr ?? scan?.ocr ?? null;
+  const conf = ocrInfo?.confidence ?? {};
   const unsure = (field: string) => conf[field] != null && conf[field]! < 0.8;
 
   function setField(key: string, value: string) {
@@ -70,11 +79,20 @@ export default function InvoiceScreen() {
 
   async function save() {
     setBusy(true); setMsg(null);
-    const { data, error } = await supabase.rpc("save_invoice", { p_book: params.book, p_invoice: toPayload(d), p_source: saved?.source ?? "manual", p_document: null, p_id: saved?.id ?? null });
+    const first = !saved && scan;
+    const { data, error } = await supabase.rpc("save_invoice", { p_book: params.book, p_invoice: toPayload(d, first ? scan.ocr : undefined),
+      p_source: saved?.source ?? (scan ? "ocr" : "manual"), p_document: null, p_id: saved?.id ?? null });
+    if (error || !data) { setBusy(false); setMsg({ text: plainError(error?.message ?? ""), bad: true }); return; }
+    if (first) {
+      const a = await supabase.rpc("attach_invoice_file", { p_invoice: data as string, p_file: scan.fileId });
+      if (a.error) { setBusy(false); setMsg({ text: "Saved, but the photo could not be linked. Try saving again.", bad: true }); await load(data as string); return; }
+      dropScan(params.scan!);
+    }
     setBusy(false);
-    if (error || !data) { setMsg({ text: plainError(error?.message ?? ""), bad: true }); return; }
+    // Keep the saved invoice in the address, so reopening or reloading the page shows it (not a blank form).
+    if (!saved) router.setParams({ id: data as string, scan: undefined });
     await load(data as string);
-    setMsg({ text: "Saved as a draft. It is not in the books until it is posted." });
+    setMsg({ text: scan ? "Saved for review. It is not in the books until it is posted." : "Saved as a draft. It is not in the books until it is posted." });
   }
   async function post() {
     if (!saved) return;
@@ -97,13 +115,14 @@ export default function InvoiceScreen() {
     <Screen>
       <Stack.Screen options={{ title }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">
-        {saved?.source === "ocr" && !locked && (
+        {fromPhoto && !locked && (
           <Card>
             <H2>Read from a photo — please check</H2>
             <P muted>Compare every field with the paper bill. Fields marked "check" were read with low confidence. Nothing goes into the books until it is posted.</P>
-            {saved.ocr?.warnings?.map((w, i) => <P key={i} danger>{w}</P>)}
+            {ocrInfo?.warnings?.map((w, i) => <P key={i} danger>{w}</P>)}
           </Card>
         )}
+        {file && <BillPhoto file={file} />}
         <Card>
           {!saved && <Chips value={d.kind} onChange={(k) => setD({ ...d, kind: k })} options={[{ value: "sale", label: "Sale" }, { value: "purchase", label: "Purchase" }]} />}
           <Field label={`${d.kind === "sale" ? "Customer" : "Supplier"} name${unsure("party") ? " — check" : ""}`} value={text.party ?? ""} onChangeText={(v) => setField("party", v)} editable={!locked} maxLength={120} />
@@ -149,7 +168,7 @@ export default function InvoiceScreen() {
         </Card>
 
         {msg && <P danger={msg.bad} ok={!msg.bad}>{msg.text}</P>}
-        {!locked && <Button title={saved ? "Save changes" : "Save as draft"} onPress={() => void save()} busy={busy} disabled={badMoney} />}
+        {!locked && <Button title={saved ? "Save changes" : scan ? "Save for review" : "Save as draft"} onPress={() => void save()} busy={busy} disabled={badMoney} />}
         {saved && !locked && (canApprove ? (
           <Card>
             <H2>Approve</H2>
@@ -172,6 +191,31 @@ export default function InvoiceScreen() {
         {saved?.status === "cancelled" && <P muted>Cancelled. A reversing entry removed it from the books; the record is kept.</P>}
       </ScrollView>
     </Screen>
+  );
+}
+
+// The stored bill, opened with a short-lived private link (the folder is private to the business's members).
+function BillPhoto({ file }: { file: BillFile }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void supabase.storage.from(BUCKET).createSignedUrl(file.path, 600).then(({ data }) => {
+      if (!live) return;
+      if (data?.signedUrl) setUrl(data.signedUrl); else setFailed(true);
+    });
+    return () => { live = false; };
+  }, [file.path]);
+  const pdf = file.mime === "application/pdf" || file.path.endsWith(".pdf");
+  return (
+    <Card>
+      <H2>The bill</H2>
+      {failed ? <P danger>Could not open the stored bill. Check the internet and reopen this screen.</P>
+        : !url ? <P muted>Loading the bill…</P>
+        : pdf ? <Button title="Open the PDF" kind="outline" onPress={() => void Linking.openURL(url)} />
+        : <Image source={{ uri: url }} accessibilityLabel="Bill photo" resizeMode="contain" onError={() => setFailed(true)}
+            style={{ width: "100%", height: 420, backgroundColor: "#eef1f5", borderRadius: 8 }} />}
+    </Card>
   );
 }
 

@@ -34,6 +34,14 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "The camera is used to photograph bills so they can be read into your accounts.",
+          "photosPermission": "Photos are used only when you choose a bill photo to read.",
+          "microphonePermission": false
+        }
       ]
     ],
     "experiments": {

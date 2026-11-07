@@ -21,11 +21,13 @@ round-off) and damages them like phone photos; `bench/score.ts` scores the extra
 
 | Condition | Amounts, taxes, total | GSTIN | Date | Fully correct (every field) |
 |---|---|---|---|---|
-| Clean / tilted / sideways / upside down / shadow / phone photo / digital PDF | 100% | 100% | 100% | 100% (clean 67%) |
-| Blurred | 100% | 100% | 100% | 67% (one invoice number misread) |
-| Scanned 2-page PDF | 100% | 100% | 100% | 67% (spaces lost in one shop name) |
+| Clean / tilted / sideways / upside down / shadow / phone photo / digital PDF / scanned 2-page PDF | 100% | 100% | 100% | 100% |
+| Blurred | 100% | 100% | 100% | 0% (spaces between words lost in shop names and item names; one invoice number misread) |
 | **All 27** (PP-OCR first) | **100%** | **100%** | **100%** | **89%** |
-| All 27, Tesseract alone (for comparison) | 100% | 93% | 100% | 81% (weaker on blurred and phone photos) |
+| All 27, Tesseract alone (earlier run, for comparison) | 100% | 93% | 100% | 81% (weaker on blurred and phone photos) |
+
+Re-measured on 7 Nov 2026 with the exact versions in `requirements.txt` (rapidocr-onnxruntime 1.4.4, OpenCV 4.10).
+Blurred photos get a "photo looks blurred" warning on the review screen.
 
 Remaining mistakes are single characters in names or numbers, which is why every bill is reviewed. Real photos
 (creases, handwriting, thermal paper, stamps) are harder than these synthetic ones and **have not been tested yet**.

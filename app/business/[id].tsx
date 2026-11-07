@@ -68,6 +68,7 @@ export default function BusinessHome() {
               <View style={{ gap: 8 }}>
                 <Button title="New sale invoice" onPress={() => go("/business/invoice", { book, biz: info!.id, kind: "sale" })} />
                 <Button title="New purchase bill" onPress={() => go("/business/invoice", { book, biz: info!.id, kind: "purchase" })} />
+                <Button title="Read a bill photo" kind="outline" onPress={() => go("/business/scan", { book, biz: info!.id })} />
               </View>
             </Card>
             <Card>

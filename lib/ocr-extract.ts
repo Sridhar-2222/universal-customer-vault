@@ -114,18 +114,18 @@ export function datesIn(text: string): string[] {
 
 // ---------- labels ----------
 const L = {
-  number: /\b(invoice|inv|bill|voucher)\s*(no|number|num|#)\b\.?|\binvoice\s*#/i,
-  date: /\b(invoice\s*date|inv\.?\s*date|bill\s*date|dated|date)\b/i,
+  number: /\b([il1]nvoice|[il1]nv|bill|voucher)\s*(no|number|num|#)\b\.?|\b[il1]nvoice\s*#/i,
+  date: /\b([il1]nvoice\s*date|[il1]nv\.?\s*date|bill\s*date|dated|date)\b/i,
   due: /\b(due\s*date|due\s*on|payment\s*due|pay\s*by)\b/i,
   buyer: /\b(bill(ed)?\s*to|buyer|customer|consignee|ship(ped)?\s*to|recipient|sold\s*to|party\s*name|m\/s\.?)\b/i,
-  grand: /\b(grand\s*total|total\s*amount|invoice\s*total|net\s*amount|amount\s*payable|net\s*payable|total\s*payable|bill\s*amount|total\s*invoice\s*value)\b/i,
+  grand: /\b(grand\s*total|total\s*amount|[il1]nvoice\s*total|net\s*amount|amount\s*payable|net\s*payable|total\s*payable|bill\s*amount|total\s*[il1]nvoice\s*value)\b/i,
   total: /\btotal\b/i,
   taxable: /\b(taxable\s*(value|amount|amt)|sub\s*-?\s*total|assessable\s*value)\b/i,
   cgst: /\bc\s*\.?\s*g\s*\.?\s*s\s*\.?\s*t\b/i,
   sgst: /\b(s|ut)\s*\.?\s*g\s*\.?\s*s\s*\.?\s*t\b/i,
   igst: /\bi\s*\.?\s*g\s*\.?\s*s\s*\.?\s*t\b/i,
   roundOff: /\bround(ed)?\s*(off|-off)?\b/i,
-  heading: /\b(tax\s*invoice|invoice|bill\s*of\s*supply|retail\s*invoice|cash\s*memo|original|duplicate|triplicate|copy|estimate)\b/i,
+  heading: /\b(tax\s*[il1]nvoice|[il1]nvoice|bill\s*of\s*supply|retail\s*[il1]nvoice|cash\s*memo|original|duplicate|triplicate|copy|estimate)\b/i,
   address: /\b(road|rd\.?|street|st\.?|nagar|colony|plot|floor|near|opp\.?|district|dist\.?|pin|phone|ph\.?|mob(ile)?|tel|email|e-mail|www\.|state\s*code|state)\b|@|\b\d{6}\b|\+91|\b\d{10}\b/i,
 };
 
@@ -254,7 +254,7 @@ export function extractInvoice(ocr: OcrResult, opts: { myGstin?: string | null; 
   if (kind === "purchase") {
     const limit = Math.min(seller ? seller.row + 1 : 8, buyerRow >= 0 ? buyerRow : 8, rows.length);
     const cands = rows.slice(0, Math.max(limit, 1)).map((r, i) => ({ r, i, h: r.y1 - r.y0 }))
-      .filter(({ r }) => /[A-Za-z]{3,}/.test(r.text) && !isHeading(r.text) && !L.address.test(r.text) && !/gstin|invoice\s*(no|date)|^date/i.test(r.text));
+      .filter(({ r }) => /[A-Za-z]{3,}/.test(r.text) && !isHeading(r.text) && !L.address.test(r.text) && !/gstin|[il1]nvoice\s*(no|date)|^date/i.test(r.text));
     const best = cands.sort((a, b) => b.h - a.h || a.i - b.i)[0];
     if (best) { partyName = best.r.text.replace(/\s{2,}.*$/, "").replace(/^(from|seller|supplier)\s*[:-]?\s*/i, ""); partyConf = best.r.conf * 0.95; }
   } else if (buyerRow >= 0) {

@@ -114,3 +114,12 @@ describe("extractInvoice", () => {
     expect(x.warnings.join(" ")).toContain("hard to read");
   });
 });
+
+describe("OCR letter slips in labels", () => {
+  test('"lnvoice No" (a small L read for the capital I) still gives the invoice number', () => {
+    const rows = purchaseRows.map((r) => r.map(([x, t, c]) => [x, t.replace("Invoice No:", "lnvoice No:"), c] as [number, string, number | undefined]));
+    const x = extractInvoice({ pages: [page(rows as ([number, string] | [number, string, number])[][], 0.95, [0])] }, { myGstin: MY });
+    expect(x.draft.number).toBe("UF/2026/889");
+    expect(x.confidence.number).toBeGreaterThan(0.8);
+  });
+});
