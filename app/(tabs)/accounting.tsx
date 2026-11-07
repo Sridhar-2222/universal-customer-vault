@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { Button, Card, Chips, Field, H2, P, Screen } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
+import { router } from "expo-router";
+import { AskBox } from "@/components/ask-box";
+import { bookApi } from "@/lib/books";
 import { formatINR, PERSONAL_EXPENSES, PERSONAL_INCOME, simpleEntry, toPaise, type MoneyAccount } from "@/lib/accounting";
 
 type Total = { code: string; name: string; type: string; debit_paise: number; credit_paise: number };
@@ -54,6 +57,8 @@ export default function Accounting() {
           <P ok={income - expense >= 0} danger={income - expense < 0}>Balance: {formatINR(income - expense)}</P>
         </Card>
         {book && <QuickEntry book={book} onDone={load} />}
+        {book && <AskBox api={bookApi(book, false)} />}
+        <MyBusinesses />
         {err && <P danger>{err}</P>}
         {sugs.length > 0 && (
           <Card>
@@ -121,6 +126,47 @@ function QuickEntry({ book, onDone }: { book: string; onDone: () => void }) {
       <Chips value={cat} onChange={setCat} options={cats.map((c) => ({ value: c, label: c.replace("_", " ").toLowerCase() }))} />
       <Chips value={money} onChange={setMoney} options={[{ value: "CASH", label: "Cash" }, { value: "BANK", label: "Bank" }, { value: "CARD", label: "Card" }]} />
       <Button title="Save" onPress={() => void save()} busy={busy} disabled={!paise} />
+    </Card>
+  );
+}
+
+type Biz = { business_id: string; role: string; businesses: { name: string; gstin: string | null } | null };
+// Business books are separate from personal ones; each opens on its own screen.
+function MyBusinesses() {
+  const [list, setList] = useState<Biz[]>([]);
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [gstin, setGstin] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    const { data: u } = await supabase.auth.getUser();
+    const { data } = await supabase.from("business_members").select("business_id,role,businesses(name,gstin)").eq("user_id", u.user?.id ?? "");
+    setList((data ?? []) as unknown as Biz[]);
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+  async function create() {
+    setErr(null);
+    const { data, error } = await supabase.rpc("create_business", { p_name: name, p_gstin: gstin || null });
+    if (error || !data) { setErr("Could not create. Check the name and GSTIN (15 characters)."); return; }
+    setAdding(false); setName(""); setGstin(""); void load();
+    router.push({ pathname: "/business/[id]", params: { id: data as string } });
+  }
+  return (
+    <Card>
+      <H2>Business accounts</H2>
+      <P muted>Kept completely separate from your personal accounts.</P>
+      {list.map((b) => (
+        <Button key={b.business_id} kind="outline" title={`${b.businesses?.name ?? "Business"} · ${b.role}`}
+          onPress={() => router.push({ pathname: "/business/[id]", params: { id: b.business_id } })} />
+      ))}
+      {adding ? (
+        <>
+          <Field label="Business name" value={name} onChangeText={setName} maxLength={120} />
+          <Field label="GSTIN (optional)" value={gstin} onChangeText={(v) => setGstin(v.toUpperCase())} autoCapitalize="characters" maxLength={15} />
+          {err && <P danger>{err}</P>}
+          <Button title="Create business" onPress={() => void create()} disabled={name.trim().length < 2} />
+        </>
+      ) : <Button title="+ Add a business" kind="outline" onPress={() => setAdding(true)} />}
     </Card>
   );
 }

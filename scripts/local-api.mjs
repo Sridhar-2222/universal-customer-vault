@@ -1,0 +1,141 @@
+// LOCAL TESTING ONLY: a tiny stand-in for Supabase's REST + auth endpoints on top of a throwaway local Postgres
+// (stubs + migrations, as in scripts/test-db.sh). Every query runs as the signed-in test user with role
+// `authenticated` and RLS on, like the real API, so the screens can be clicked through without a cloud project.
+// It implements only what the app uses and accepts unsigned test tokens. Never point it at a real database.
+// Usage: PGURL=postgres://postgres@localhost:54329/ucv_ui node scripts/local-api.mjs   (listens on 127.0.0.1:54321)
+import http from "node:http";
+import pg from "pg";
+
+const PGURL = process.env.PGURL ?? "";
+if (!/@(localhost|127\.0\.0\.1)[:/]/.test(PGURL)) { console.error("Refusing: PGURL must be a local database"); process.exit(2); }
+// Same JSON shapes as PostgREST: dates as "YYYY-MM-DD", bigint and numeric as numbers.
+pg.types.setTypeParser(1082, (v) => v);
+pg.types.setTypeParser(20, (v) => Number(v));
+pg.types.setTypeParser(1700, (v) => Number(v));
+const pool = new pg.Pool({ connectionString: PGURL });
+const q = (id) => `"${String(id).replace(/"/g, '""')}"`;
+
+const fkCache = new Map();
+async function relation(db, from, to) {
+  const key = `${from}>${to}`;
+  if (fkCache.has(key)) return fkCache.get(key);
+  const sql = `select c.conrelid = $1::regclass as from_is_child,
+      array(select a.attname::text from unnest(c.conkey) with ordinality k(n, o) join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.n order by k.o) as child_cols,
+      array(select a.attname::text from unnest(c.confkey) with ordinality k(n, o) join pg_attribute a on a.attrelid = c.confrelid and a.attnum = k.n order by k.o) as parent_cols
+    from pg_constraint c where c.contype = 'f' and ((c.conrelid = $1::regclass and c.confrelid = $2::regclass) or (c.conrelid = $2::regclass and c.confrelid = $1::regclass))
+    order by array_length(c.conkey, 1) desc`;
+  const { rows } = await db.query(sql, [`public.${from}`, `public.${to}`]);
+  const r = rows[0];
+  const out = !r ? null : r.from_is_child
+    ? { many: false, mine: r.child_cols, theirs: r.parent_cols }
+    : { many: true, mine: r.parent_cols, theirs: r.child_cols };
+  fkCache.set(key, out);
+  return out;
+}
+
+function splitTop(s) {
+  const out = []; let depth = 0, cur = "";
+  for (const ch of s) {
+    if (ch === "(") depth++;
+    if (ch === ")") depth--;
+    if (ch === "," && depth === 0) { out.push(cur); cur = ""; } else cur += ch;
+  }
+  if (cur) out.push(cur);
+  return out.map((x) => x.trim()).filter(Boolean);
+}
+async function shape(db, table, rows, sel) {
+  const parts = splitTop(sel || "*");
+  for (const row of rows) {
+    const out = {};
+    for (const p of parts) {
+      const m = p.match(/^([a-z_]+)\((.*)\)$/s);
+      if (!m) { if (p === "*") Object.assign(out, row); else out[p] = row[p]; continue; }
+      const [, rel, inner] = m;
+      const fk = await relation(db, table, rel);
+      if (!fk) throw Object.assign(new Error(`no relation ${table}->${rel}`), { code: "PGRST200" });
+      const vals = fk.mine.map((c) => row[c]);
+      const where = fk.theirs.map((c, i) => `${q(c)} = $${i + 1}`).join(" and ");
+      const got = vals.some((v) => v == null) ? [] : (await db.query(`select * from public.${q(rel)} where ${where}`, vals)).rows;
+      const shaped = await shape(db, rel, got, inner);
+      out[rel] = fk.many ? shaped : shaped[0] ?? null;
+    }
+    for (const k of Object.keys(row)) delete row[k];
+    Object.assign(row, out);
+  }
+  return rows;
+}
+const OPS = { eq: "=", neq: "<>", gt: ">", gte: ">=", lt: "<", lte: "<=" };
+async function select(db, table, params, wantCount) {
+  const vals = [], conds = [];
+  for (const [k, v] of params) {
+    if (["select", "order", "limit", "offset"].includes(k)) continue;
+    const m = v.match(/^(eq|neq|gt|gte|lt|lte|in|is)\.(.*)$/s);
+    if (!m) continue;
+    if (m[1] === "is") conds.push(`${q(k)} is ${m[2] === "null" ? "null" : m[2] === "true" ? "true" : "false"}`);
+    else if (m[1] === "in") { vals.push(m[2].replace(/^\(|\)$/g, "").split(",").map((x) => x.replace(/^"|"$/g, ""))); conds.push(`${q(k)} = any($${vals.length})`); }
+    else { vals.push(m[2]); conds.push(`${q(k)} ${OPS[m[1]]} $${vals.length}`); }
+  }
+  const where = conds.length ? ` where ${conds.join(" and ")}` : "";
+  const ord = params.get("order");
+  const order = ord ? ` order by ${ord.split(",").map((o) => { const [c, dir, nulls] = o.split("."); return `${q(c)} ${dir === "desc" ? "desc" : "asc"}${nulls === "nullslast" ? " nulls last" : nulls === "nullsfirst" ? " nulls first" : ""}`; }).join(", ")}` : "";
+  const limit = params.get("limit") ? ` limit ${Number(params.get("limit"))}` : "";
+  const offset = params.get("offset") ? ` offset ${Number(params.get("offset"))}` : "";
+  const count = wantCount ? Number((await db.query(`select count(*) from public.${q(table)}${where}`, vals)).rows[0].count) : null;
+  const rows = (await db.query(`select * from public.${q(table)}${where}${order}${limit}${offset}`, vals)).rows;
+  return { rows: await shape(db, table, rows, params.get("select")), count };
+}
+async function rpc(db, fn, args) {
+  const { rows: fns } = await db.query(`select p.proretset, p.proargnames, t.typname, t.typtype from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    join pg_type t on t.oid = p.prorettype where n.nspname = 'public' and p.proname = $1`, [fn]);
+  const keys = Object.keys(args);
+  const f = fns.find((x) => keys.every((k) => (x.proargnames ?? []).includes(k)));
+  if (!f) throw Object.assign(new Error(`Could not find the function public.${fn}`), { code: "PGRST202" });
+  const vals = keys.map((k) => (args[k] !== null && typeof args[k] === "object" ? JSON.stringify(args[k]) : args[k]));
+  const call = `public.${q(fn)}(${keys.map((k, i) => `${q(k)} => $${i + 1}`).join(", ")})`;
+  if (f.proretset || f.typtype === "c") return (await db.query(`select * from ${call}`, vals)).rows;
+  const r = (await db.query(`select ${call} as v`, vals)).rows[0].v;
+  return f.typname === "void" ? null : r;
+}
+
+const userOf = (req) => {
+  const tok = (req.headers.authorization ?? "").replace(/^Bearer /, "");
+  try { const p = JSON.parse(Buffer.from(tok.split(".")[1] ?? "", "base64url").toString()); return p.sub && p.role === "authenticated" ? p : null; } catch { return null; }
+};
+const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,HEAD,OPTIONS", "access-control-expose-headers": "content-range" };
+const send = (res, status, body, extra = {}) => { res.writeHead(status, { "content-type": "application/json", ...cors, ...extra }); res.end(body === undefined ? "" : JSON.stringify(body)); };
+
+http.createServer(async (req, res) => {
+  if (req.method === "OPTIONS") return send(res, 204);
+  const url = new URL(req.url, "http://x");
+  const user = userOf(req);
+  if (url.pathname === "/auth/v1/user") return user ? send(res, 200, { id: user.sub, email: user.email, aud: "authenticated", role: "authenticated", app_metadata: {}, user_metadata: {} }) : send(res, 401, { message: "no user" });
+  if (url.pathname.startsWith("/auth/v1/logout")) return send(res, 204);
+  const m = url.pathname.match(/^\/rest\/v1\/(rpc\/)?([a-z_]+)$/);
+  if (!m) return send(res, 404, { message: "not implemented in local-api" });
+  let body = "";
+  for await (const c of req) body += c;
+  const db = await pool.connect();
+  try {
+    await db.query("begin");
+    await db.query(`set local role ${user ? "authenticated" : "anon"}`);
+    await db.query("select set_config('request.jwt.claim.sub', $1, true)", [user?.sub ?? ""]);
+    let out;
+    const headers = {};
+    if (m[1]) out = await rpc(db, m[2], body ? JSON.parse(body) : {});
+    else if (req.method === "GET" || req.method === "HEAD") {
+      const wantCount = /count=exact/.test(req.headers.prefer ?? "");
+      const r = await select(db, m[2], url.searchParams, wantCount);
+      out = r.rows;
+      if (wantCount) headers["content-range"] = `${r.rows.length ? `0-${r.rows.length - 1}` : "*"}/${r.count}`;
+      if (/vnd\.pgrst\.object/.test(req.headers.accept ?? "")) {
+        if (r.rows.length !== 1) { await db.query("rollback"); return send(res, 406, { code: "PGRST116", message: "JSON object requested, multiple (or no) rows returned" }); }
+        out = r.rows[0];
+      }
+    } else { await db.query("rollback"); return send(res, 405, { message: "clients may only read tables; writes go through functions" }); }
+    await db.query("commit");
+    return req.method === "HEAD" ? send(res, 200, undefined, headers) : send(res, 200, out, headers);
+  } catch (e) {
+    await db.query("rollback").catch(() => {});
+    return send(res, 400, { code: e.code ?? "P0001", message: e.message, details: e.detail ?? null, hint: e.hint ?? null });
+  } finally { db.release(); }
+}).listen(54321, "127.0.0.1", () => console.log("local-api on http://127.0.0.1:54321"));
