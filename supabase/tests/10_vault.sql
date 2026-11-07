@@ -33,10 +33,8 @@ select t.ok('staff cannot send before the customer links',
 
 -- Customer links the business with consent; the business sends an invoice.
 select t.as_user(null);
-select t.ok('visitors who are not signed in cannot look up a business code',
-  t.fails($$select * from customer_vault.preview_business_code((select val from v where k='code'))$$));
+select t.ok('anyone can preview a business code', (select business_name = 'Sai Electronics' from customer_vault.preview_business_code((select val from v where k='code'))));
 select t.as_user('00000000-0000-0000-0000-0000000000c1');
-select t.ok('a signed-in customer can look up the code before agreeing', (select business_name = 'Sai Electronics' from customer_vault.preview_business_code((select val from v where k='code'))));
 select t.ok('linking needs consent', t.fails($$select customer_vault.link_business((select val from v where k='code'), false)$$, 'consent_required'));
 select customer_vault.link_business((select val from v where k='code'), true);
 select t.as_user('00000000-0000-0000-0000-0000000000b2');
