@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fingertip and Vault: Work Report</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  :root { --navy:#173a4f; --gold:#e8b53a; --ink:#13232f; --muted:#5a6b77; --line:#d5dfe5; --soft:#eef3f5; --ok:#1b7a45; --warn:#9a6a00; --bad:#b3261e; }
+  * { box-sizing: border-box; }
+  body { font-family: "DejaVu Sans", "Noto Sans", Arial, sans-serif; color: var(--ink); font-size: 10.2pt; line-height: 1.45; margin: 0; }
+  h1 { font-size: 22pt; color: var(--navy); margin: 0 0 4pt; }
+  h2 { font-size: 14pt; color: var(--navy); margin: 18pt 0 6pt; padding-bottom: 3pt; border-bottom: 2px solid var(--gold); break-after: avoid; }
+  h3 { font-size: 11pt; color: var(--navy); margin: 10pt 0 4pt; break-after: avoid; }
+  p { margin: 0 0 6pt; }
+  ul, ol { margin: 0 0 6pt 16pt; padding: 0; }
+  li { margin: 0 0 2pt; }
+  table { width: 100%; border-collapse: collapse; margin: 4pt 0 8pt; font-size: 9.4pt; break-inside: avoid; }
+  h2 + p, h2 + table, h3 + table { break-before: avoid; }
+  tr { break-inside: avoid; }
+  th { background: var(--navy); color: #fff; text-align: left; padding: 4pt 6pt; font-weight: 600; }
+  td { padding: 4pt 6pt; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:nth-child(even) td { background: #f7f9fa; }
+  .cover { background: var(--navy); color: #fff; padding: 22pt 22pt 18pt; border-radius: 8pt; margin-bottom: 12pt; }
+  .cover h1 { color: #fff; }
+  .cover .logo { display:inline-block; background: var(--gold); color: #3a2a00; font-weight: 700; border-radius: 6pt; padding: 3pt 7pt; margin-right: 6pt; }
+  .cover p { color: #dbe6ec; margin: 4pt 0 0; }
+  .lead { font-size: 11pt; background: var(--soft); border-left: 4px solid var(--gold); padding: 8pt 10pt; margin: 8pt 0 10pt; }
+  .tag { display:inline-block; font-size: 8.4pt; font-weight: 700; padding: 1pt 6pt; border-radius: 9pt; border: 1.2px solid currentColor; white-space: nowrap; }
+  .live { color: var(--ok); } .wait { color: var(--warn); } .no { color: var(--bad); }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6pt; margin: 6pt 0 10pt; }
+  .stat { border: 1px solid var(--line); border-radius: 6pt; padding: 7pt; text-align: center; }
+  .stat b { display: block; font-size: 17pt; color: var(--navy); }
+  .stat span { font-size: 8.4pt; color: var(--muted); }
+  code { font-family: "DejaVu Sans Mono", monospace; font-size: 8.6pt; background: var(--soft); padding: 0 3pt; border-radius: 3pt; }
+  .small { font-size: 8.6pt; color: var(--muted); }
+  .pb { break-before: page; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div><span class="logo">Rx</span><b>Fingertip</b></div>
+  <h1 style="margin-top:10pt">Fingertip and Vault: Work Report</h1>
+  <p>Everything done on 7–8 November 2026, in plain words, with the technical details at the end.</p>
+  <p>Prepared for Sridhar Renukunta, Sri Vasudeva Medical Agencies, Karimnagar · 8 November 2026</p>
+</div>
+
+<div class="lead">The new button screens are <b>live</b> in Rx Fingertip for all five kinds of users. The Vault (GST accounts, bill photos, customer documents) is <b>live inside the Fingertip database</b>, linked to each shop. Bill photo reading is built and tested. One problem was found: sign-in emails hit a limit, and a fix is waiting for your choice.</div>
+
+<div class="grid">
+  <div class="stat"><b>5</b><span>user homes made buttons-only</span></div>
+  <div class="stat"><b>623</b><span>app tests passing</span></div>
+  <div class="stat"><b>99</b><span>Vault security checks passing</span></div>
+  <div class="stat"><b>425</b><span>Fingertip security checks passing</span></div>
+</div>
+
+<h2>1. At a glance</h2>
+<table>
+  <tr><th style="width:22%">Part</th><th>What it is</th><th style="width:24%">Status</th></tr>
+  <tr><td>Button screens</td><td>Clean home pages with big buttons; all explanations on one Help page</td><td><span class="tag live">Live</span> rx-fingertip.lovable.app</td></tr>
+  <tr><td>The Vault database</td><td>GST accounts, bill photos and customer documents, shared by both apps</td><td><span class="tag live">Live</span> in the Fingertip database</td></tr>
+  <tr><td>Link to Fingertip shops</td><td>Each Fingertip shop is its own Vault business, with one staff list</td><td><span class="tag live">Live</span></td></tr>
+  <tr><td>Vault screens in Rx Fingertip</td><td>GST invoice, bill photo reading, Profit &amp; GST, shop documents</td><td><span class="tag wait">To build</span></td></tr>
+  <tr><td>Bill photo reading (OCR)</td><td>Reads a photo of a GST bill into the invoice form</td><td><span class="tag wait">Built, not online</span></td></tr>
+  <tr><td>Sign-in</td><td>Email code sign-in</td><td><span class="tag no">Problem found</span> fix not started</td></tr>
+  <tr><td>Fingertrip.biz AI</td><td>Phone app for any small business</td><td><span class="tag wait">Not changed yet</span></td></tr>
+</table>
+
+<h2>2. Your decisions</h2>
+<table>
+  <tr><th style="width:30%">Decision</th><th>What it means</th></tr>
+  <tr><td>One Vault for both apps</td><td>No separate "Universal Customer Vault" product. The same Vault serves Rx Fingertip and Fingertrip.biz AI.</td></tr>
+  <tr><td>Put it in the Fingertip database</td><td>No new Supabase project (the free plan allows only two). The Vault has its own separate section.</td></tr>
+  <tr><td>"Link them"</td><td>A Fingertip shop and its Vault business are one, with one staff list kept in Fingertip.</td></tr>
+  <tr><td>"Don't revoke anything"</td><td>What is built stays as built. No security changes were made.</td></tr>
+  <tr><td>Buttons only, Help separate</td><td>Each user gets one page of buttons; explanations live on the Help page.</td></tr>
+  <tr><td>"Finish and publish"</td><td>All five homes were built, checked, merged and published.</td></tr>
+  <tr><td>Health records stay separate</td><td>Patient files remain in Rx Fingertip's stricter health store and connect to the Vault later.</td></tr>
+</table>
+
+<h2>3. The new buttons in Rx Fingertip (live)</h2>
+<p>Every user now opens to one page of big one-word buttons. A button opens its actions; an action opens the screen that does the job. The <b>Help</b> button at the top opens one page with every explanation.</p>
+<table>
+  <tr><th style="width:18%">User</th><th>Home buttons</th></tr>
+  <tr><td>Chemist (10)</td><td>Sell, Buy, Stock, Order, Patients, Money, Reports, Staff, Documents, Learn, plus medicine search</td></tr>
+  <tr><td>Patient (8)</td><td>My Records, Medicines, Order, Doctors, Hospitals &amp; Labs, Emergency, Health Check, Health News, plus search</td></tr>
+  <tr><td>Distributor (7)</td><td>Orders, Chemists, Dues, Stock, Returns, Reports, Learn</td></tr>
+  <tr><td>Hospital (5)</td><td>Profile, Announce, Accounts, Videos, Referrals</td></tr>
+  <tr><td>Doctor (4)</td><td>Profile, Announce, Videos, Referrals</td></tr>
+</table>
+<h3>Chemist buttons and what they open</h3>
+<table>
+  <tr><th style="width:16%">Button</th><th>Actions</th></tr>
+  <tr><td>Sell</td><td>Sales slip · Patient orders</td></tr>
+  <tr><td>Buy</td><td>Purchase bill · Distributor bills · Returns · Purchases &amp; sales</td></tr>
+  <tr><td>Stock</td><td>Stock book · Products · Product photos · Check &amp; confirm · Expiry · Special drugs</td></tr>
+  <tr><td>Order</td><td>Shortage list · Send &amp; track orders</td></tr>
+  <tr><td>Patients</td><td>Read prescription · Pre-orders · Join poster</td></tr>
+  <tr><td>Money</td><td>Today &amp; accounts · Dues</td></tr>
+  <tr><td>Reports</td><td>Stock report · Stock check</td></tr>
+  <tr><td>Staff</td><td>Attendance &amp; advances</td></tr>
+  <tr><td>Documents</td><td>Prescriptions · My health</td></tr>
+  <tr><td>Learn</td><td>Doctors · Videos · Health alerts</td></tr>
+</table>
+<ul>
+  <li>Nothing was lost: every screen people could open before is under a button, and old saved links still work.</li>
+  <li>Buttons and actions not built yet stay hidden until they work (GST invoice, Profit &amp; GST, shop documents and others).</li>
+  <li>A patient's records, vital check and refills moved unchanged to their own "My records" page.</li>
+  <li>"What needs attention", "Owner's observations" and "Share Fingertip" now show only to you, the owner.</li>
+  <li>Plan and clickable model: claude.ai/artifact/75kocDRyfsofbuKJ4RgNiT</li>
+</ul>
+
+<h2 class="pb">4. The Vault</h2>
+<p>The Vault is one shared part for both apps. It keeps a business's GST accounts and bill photos, and each customer's own documents.</p>
+<table>
+  <tr><th style="width:24%">Area</th><th>What it does</th></tr>
+  <tr><td>Customer documents</td><td>Bills, warranties, bookings and papers. A business can send documents to a customer only after the customer agrees with the business's 8-letter code. Sharing can have an end date and be taken back.</td></tr>
+  <tr><td>Business accounts</td><td>Sale invoices and purchase bills with GST checks (valid GSTIN, CGST = SGST, IGST vs same state, totals add up, duplicate numbers), payments, dues and overdue, cash and bank books, profit and loss, balance sheet, GST summary.</td></tr>
+  <tr><td>Personal accounts</td><td>Income and expenses for a person, kept separate from any business.</td></tr>
+  <tr><td>Bill photos</td><td>Kept in the business's own private folder; members only; cannot be deleted because they are proof for the books.</td></tr>
+  <tr><td>Approval</td><td>Staff can enter bills; only the owner or an admin can post them. Bills read from photos need a tick: "I checked these details against the paper bill".</td></tr>
+  <tr><td>Link to Fingertip shops</td><td>Each shop is its own Vault business. Fingertip's owner, admin and staff roles apply; removing someone in Fingertip ends their Vault access at once. The owner can add the shop's GSTIN.</td></tr>
+  <tr><td>Not in the Vault</td><td>Health records. Patient files stay in Rx Fingertip's stricter health store.</td></tr>
+</table>
+
+<h2>5. Reading bills from photos (OCR)</h2>
+<p>Tested on 27 sample GST bills damaged like phone photos: every amount, tax, total, GSTIN and date was read correctly, and 89% of bills were right in every field.</p>
+<table>
+  <tr><th style="width:42%">Kind of photo</th><th>Result</th></tr>
+  <tr><td>Clean, tilted, sideways, upside down, shadowed, phone-quality, PDF</td><td>All fields right</td></tr>
+  <tr><td>Blurred</td><td>Amounts right; words in names run together (a warning is shown)</td></tr>
+  <tr><td>Speed</td><td>About 4–5 seconds per photo; PDFs instantly</td></tr>
+</table>
+<ul>
+  <li>Engines: PaddleOCR's reading models first, Tesseract as backup.</li>
+  <li>Fixes made while testing: "lnvoice No" (a small L read for I) now found; upside-down bills fixed (0% to 100%); software versions locked so a new install reads the same way.</li>
+  <li>Not yet tested on real paper bills; handwriting is only flagged; the reading service still has to be put online.</li>
+</ul>
+
+<h2>6. Safety</h2>
+<p>The database itself decides who sees what, so a mistake in the app cannot show one shop's data to another.</p>
+<ul>
+  <li>Each person sees only their own documents; a business sees only its own records and what customers chose to share.</li>
+  <li>Nobody writes to tables directly; every change goes through checked steps that confirm who you are and your role.</li>
+  <li>Files are private and open only through links that expire within minutes.</li>
+  <li>Accounts must balance; a posted entry cannot be edited, only reversed.</li>
+  <li>Every action on a document is written to a history that nobody can change.</li>
+  <li>Tested against unsafe copies of Fingertip's names: the Vault uses only its own checks.</li>
+  <li>Supabase's security advisor shows no warnings for the Vault.</li>
+</ul>
+<table>
+  <tr><th style="width:42%">Left as built (your decision)</th><th>Note</th></tr>
+  <tr><td>Business-code check usable without sign-in</td><td>Shows a business name for a correct 8-letter code</td></tr>
+  <tr><td>"Automatically expose new tables" is on</td><td>Supabase recommends off; future tables need care</td></tr>
+  <tr><td>Leaked-password check is off</td><td>Matters little with email codes</td></tr>
+</table>
+<p><b>Still to write before the pilot:</b> two-step sign-in on Supabase, GitHub, Lovable and Meta; one tested backup; a short privacy note; what to do if something leaks.</p>
+
+<h2 class="pb">7. Sign-in problem and the fixes</h2>
+<p>Sign-in codes stop arriving because Supabase's built-in email sender allows only a few emails per hour for the whole app. The logs show "email rate limit exceeded".</p>
+<table>
+  <tr><th style="width:40%">Message in the logs</th><th>Meaning</th></tr>
+  <tr><td>email rate limit exceeded</td><td>Main problem: codes are not sent once the hourly limit is used</td></tr>
+  <tr><td>Email link is invalid or has expired</td><td>Link used up or late; typing the 6-digit code avoids it</td></tr>
+  <tr><td>Error sending confirmation OTP to provider</td><td>Phone sign-in tried from a test app; no SMS service connected</td></tr>
+  <tr><td>Invalid login credentials</td><td>Password attempts from the same test app, not the live app</td></tr>
+</table>
+<table>
+  <tr><th style="width:30%">Option</th><th>What it fixes</th><th style="width:20%">Cost</th><th style="width:14%">Advice</th></tr>
+  <tr><td>A. Own email sender (Brevo or Resend)</td><td>Codes arrive reliably</td><td>Free tier</td><td>First</td></tr>
+  <tr><td>B. "Continue with Google"</td><td>One tap, no email to wait for</td><td>Free</td><td>Next</td></tr>
+  <tr><td>C. Code by WhatsApp</td><td>Uses the WhatsApp number</td><td>Small fee per message</td><td>Later</td></tr>
+  <tr><td>D. Code by SMS</td><td>Phone sign-in</td><td>Paid; slow approval in India</td><td>No</td></tr>
+</table>
+
+<h2>8. Problems met during the work, and how they were handled</h2>
+<table>
+  <tr><th style="width:40%">Problem</th><th>What was done</th></tr>
+  <tr><td>Earlier session's bill-photo work was never saved and was lost</td><td>Rebuilt from the plan and tested again</td></tr>
+  <tr><td>Supabase free plan allows only two projects</td><td>Vault placed inside the Fingertip project, in its own section</td></tr>
+  <tr><td>The name "vault" is reserved by Supabase</td><td>Section named <code>customer_vault</code>, folder <code>customer-vault</code></td></tr>
+  <tr><td>Supabase's approval question kept timing out</td><td>Most parts sent in small pieces; you pasted the last piece in the SQL Editor</td></tr>
+  <tr><td>Phone copy-paste cut long code short</td><td>Split into a short final piece (109 lines), which worked</td></tr>
+  <tr><td>"Exposed schemas" nearly saved without <code>public</code></td><td>Caught before saving; all three ticked</td></tr>
+  <tr><td>Page reload showed a blank invoice form</td><td>Fixed: the saved invoice now stays in the address</td></tr>
+  <tr><td>Vault database not recorded in Fingertip's code</td><td>Matching files and change records added</td></tr>
+</table>
+
+<h2>9. What comes next</h2>
+<ol>
+  <li>Choose a sign-in fix (A, or A and B).</li>
+  <li>Write the short security basics page.</li>
+  <li>Build the Vault screens inside Rx Fingertip: GST invoice, bill photo reading, Profit &amp; GST, shop documents.</li>
+  <li>Put the bill reading service online.</li>
+  <li>Bring the same buttons and the Vault to Fingertrip.biz AI.</li>
+  <li>Try it with 3 chemists and 3 patients, then fix what they cannot find.</li>
+</ol>
+
+<h2 class="pb">10. Technical details</h2>
+<h3>Code and releases</h3>
+<table>
+  <tr><th style="width:30%">Repository</th><th>What changed</th></tr>
+  <tr><td>Sridhar-2222/rx-at-your-fingertips</td><td>Change #88 merged and published: buttons-only homes for all users, <code>/help</code>, <code>/my-records</code>, owner-only panels, Vault migration records</td></tr>
+  <tr><td>Sridhar-2222/universal-customer-vault</td><td>Change #1 merged (bill photos, OCR fixes); migrations 0001–0006 in <code>customer_vault</code>; 99 SQL tests; OCR service and benchmark; handover notes</td></tr>
+  <tr><td>Sridhar-2222/Medical-Store-Final-Complete</td><td>Fingertrip.biz AI (BizCore) on side branches; not changed</td></tr>
+</table>
+<h3>Database (Supabase project fsftbvchnifshndssowe)</h3>
+<table>
+  <tr><th style="width:30%">Item</th><th>Detail</th></tr>
+  <tr><td>Vault section</td><td><code>customer_vault</code>: 16 tables, about 51 functions, row rules on every table, read-only access for signed-in users, writes only through checked functions</td></tr>
+  <tr><td>File folder</td><td><code>customer-vault</code> (private), 5 storage rules named <code>cv_*</code></td></tr>
+  <tr><td>Change records</td><td><code>20261107174819</code> schema · <code>20261107183000</code> accounting and bill files · <code>20261108010000</code> link to Fingertip shops</td></tr>
+  <tr><td>Data API</td><td>Exposed schemas: public, graphql_public, customer_vault</td></tr>
+  <tr><td>Verification</td><td>Live structure fingerprint-matched to the tested copy (only two code comments differ); Fingertip's 71 tables untouched</td></tr>
+</table>
+<h3>Tests run</h3>
+<table>
+  <tr><th style="width:40%">Test</th><th>Result</th></tr>
+  <tr><td>Rx Fingertip app tests (bun)</td><td>623 pass, 0 fail</td></tr>
+  <tr><td>Rx Fingertip type check and build</td><td>Clean</td></tr>
+  <tr><td>Rx Fingertip SQL access tests</td><td>425 pass, with the Vault included</td></tr>
+  <tr><td>Vault SQL access tests</td><td>99 pass (including 12 for the shop link and 3 for separation from Fingertip)</td></tr>
+  <tr><td>Vault logic tests</td><td>42 pass</td></tr>
+  <tr><td>Vault browser test (bill photo flow)</td><td>16 of 16 steps pass</td></tr>
+  <tr><td>Screenshots of every new home</td><td>Taken with made-up accounts; no live data used; no page errors</td></tr>
+  <tr><td>Live site check</td><td>New Help page found in the published site's code</td></tr>
+</table>
+<p class="small">Original requirements: docs/HANDOVER-FROM-CHATGPT.md in the Vault repository. Fingertip plans: Google Drive, "Rx Fingertip Complete Plan" (21 Oct 2026). Easy-to-read version of this report: claude.ai/artifact/7V5vELntfCogD7W9Lc3TvS.</p>
+
+</body>
+</html>
